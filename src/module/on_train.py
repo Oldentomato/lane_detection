@@ -26,5 +26,5 @@ class On_Train:
             self.optimizer.step()
 
             train_print_progress(i, len(self.data_loader), loss.item())
-        torch.save(self.model.state_dict(), f'{self.model_save_dir}+/model_num_{epoch}.pt')
+        torch.save(self.model.state_dict(), f'{self.model_save_dir}/model_num_{epoch}.pt')
         print("model_saved")

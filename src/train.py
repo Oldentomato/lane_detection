@@ -6,7 +6,7 @@ import glob
 
 json_folder_path = '../data/labels'
 image_folder_path = '../data/images'
-load_weights_dir = ""
+load_weights_dir = "../out/weights/model_num_2.pt"
 
 num_classes = 6  
 
@@ -84,15 +84,17 @@ model = model_loader.load()
 # 모델 학습
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
+model.to(device)
+
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
 one_epoch_train = On_Train(model,optimizer,data_loader,device, model_save_dir="../out/weights")
 
 
 for epoch in range(num_epochs):
-    one_epoch_train.run(epoch, is_eval=True)
+    one_epoch_train.run(epoch+1, is_eval=True)
 
-    print(f"Epoch {epoch} / {num_epochs}")
+    print(f"Epoch {epoch+1} / {num_epochs}")
 
 # 모델 저장
 # torch.save(model.state_dict(), '../out/models/object_detection_model.pth')
