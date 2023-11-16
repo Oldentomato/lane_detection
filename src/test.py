@@ -47,6 +47,7 @@ def transform_data(image, targets):
     }
     return image, targets
 
+
 # 변환된 데이터 예시
 transformed_data = transform_data(x_train[0], y_train[0])
 print(transformed_data)
@@ -109,8 +110,8 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         train_print_progress(i, len(data_loader), loss.item())
-    print_progress(epoch, num_epochs)
-        # print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item()}")
+
+    print(f"Epoch {epoch} / {num_epochs}")
 
 # 모델 저장
 torch.save(model.state_dict(), '../out/models/object_detection_model.pth')

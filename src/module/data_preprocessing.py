@@ -21,10 +21,16 @@ def parse_json_files(json_folder):
         x_max = max(x_values)
         y_max = max(y_values)
 
-        x_min = x_min * (224 / origin_wid)
-        y_min = y_min * (224 / origin_hei)
-        x_max = x_max * (224 / origin_wid)
-        y_max = y_max * (224 / origin_hei)
+        if x_max > 1920 or y_max > 1200 or x_min < 0 or y_min < 0:
+            return None
+
+        if x_max == x_min or y_max == y_min:
+            return None
+
+        x_min = x_min / origin_wid
+        y_min = y_min / origin_hei
+        x_max = x_max / origin_wid
+        y_max =  y_max / origin_hei
 
         bbox = [x_min, y_min, x_max, y_max]
         return bbox
@@ -59,9 +65,13 @@ def parse_json_files(json_folder):
 
                     # Constructing the box data
                     point_data = [[point['x'], point['y']] for point in box_data]
-                    origin_wid = data['image']['image_size'][0]
-                    origin_hei = data['image']['image_size'][1]
-                    boxes.append(convert_to_bbox(point_data, origin_wid, origin_hei))
+                    origin_wid = data['image']['image_size'][1]
+                    origin_hei = data['image']['image_size'][0]
+                    convert = convert_to_bbox(point_data, origin_wid, origin_hei)
+                    if convert == None:
+                        continue
+                    else:
+                        boxes.append(convert)
                 except:
                     continue
             else:
