@@ -1,0 +1,10 @@
+lr: 0.001
+batch_size: 2
+img_size: [224, 224]
+pretrained_weights: "DEFAULT"
+label_dir: ""
+image_dir: ""
+cache_label_dir: ""
+cache_image_dir: ""
+epochs: 5
+save_model_name: ""
