@@ -1,73 +1,160 @@
-import torch
-from PIL import Image
-import torchvision.transforms as transforms
-from module import Load_Model
-import torchvision
-import matplotlib.pyplot as plt
-
-def make_prediction(model, img, threshold):
-    model.eval()
-    preds = model(img)
-    for id in range(len(preds)):
-        idx_list = []
-
-        for idx, score in enumerate(preds[id]['scores']):
-            if score > threshold:
-                idx_list.append(idx)
+from PIL import ImageDraw, ImageFont, Image
+from module import print_progress
+import glob
+import os
+import json
+import numpy as np
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
 
 
-        preds[id]['boxes'] = preds[id]['boxes'][idx_list]
-        preds[id]['labels'] = preds[id]['labels'][idx_list]
-        preds[id]['scores'] = preds[id]['scores'][idx_list]
 
-    return preds
+def calculate_bbox_size(bbox):
+    # 바운딩 박스의 크기 계산
+    width = bbox[2] - bbox[0]
+    height = bbox[3] - bbox[1]
+    return width,height
 
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),  # Resize the image to (224, 224)
-    transforms.ToTensor(),           # Convert PIL Image to PyTorch tensor
+
+def detect_small_bbox(bbox, width_thres, height_thres):
+    # threshold보다 작은 크기의 바운딩 박스 감지
+    w, h = calculate_bbox_size(bbox)
+    if w < width_thres or h < height_thres:
+        return True
+    else:
+        return False
+
+def parse_json_files(json_folder):
+    labels_data = []
+    excepted_data = []
+
+
+
+    def convert_to_bbox(data):
+        if not data or not isinstance(data, list):
+            return None
+
+        if len(data) < 2:
+            return None
+
+        x_values = [item[0] for item in data]
+        y_values = [item[1] for item in data]
+
+        x_min = min(x_values)
+        y_min = min(y_values)
+        x_max = max(x_values)
+        y_max = max(y_values)
+
+        if x_max > 1920 or y_max > 1200 or x_min < 0 or y_min < 0:
+            return None
+
+        if x_max == x_min or y_max == y_min:
+            return None
+
+        bbox = [x_min, y_min, x_max, y_max]
+
+        w_thres = 50
+        h_thres = 50
+        if detect_small_bbox(bbox, w_thres, h_thres):
+            return None
+        else:
+            return bbox
+
+    # Iterate over each JSON file in the folder
+    for i,json_file in enumerate(os.listdir(json_folder)):
+        print_progress(i,len(os.listdir(json_folder)))
+        if json_file.endswith(".json"):
+            json_path = os.path.join(json_folder, json_file)
+
+            with open(json_path, 'r') as file:
+                data = json.load(file)
+
+
+            boxes = []
+            label = []
+            for annotation in data['annotations']:
+                box_data = annotation['data']
+                attributes = annotation['attributes']
+
+                try:
+                    # Extracting values from attributes
+                    lane_color = next(attr['value'] for attr in attributes if attr['code'] == 'lane_color')
+                    lane_type = next(attr['value'] for attr in attributes if attr['code'] == 'lane_type')
+
+                    # Constructing label in the format 'color_type'
+                    label_str = f'{lane_color.lower()}_{lane_type.lower()}'
+
+                    # Mapping labels to integers
+                    label_map = {'white_dotted': 0, 'white_solid': 1, 'yellow_dotted': 2, "yellow_solid": 3, "blue_dotted": 4, "blue_solid": 5}
+                    label.append(label_map[label_str])
+
+                    # Constructing the box data
+                    point_data = [[point['x'], point['y']] for point in box_data]
+                    convert = convert_to_bbox(point_data)
+                    if convert == None:
+                        continue
+                    else:
+                        boxes.append(convert)
+                except:
+                    continue
+            else:
+                if len(boxes) == 0:
+                    excepted_data.append(data['image']['file_name'])
+
+            # Adding to the labels_data list
+            if len(boxes) >= 1:
+                labels_data.append({'boxes': boxes, 'labels': label})
+
+
+    return labels_data, excepted_data
+
+def visualize_images_with_bbox(images, bbox_data_list):
+    # images: 이미지 파일 경로의 리스트
+    # bbox_data_list: bbox 데이터 리스트 [[xmin, ymin, xmax, ymax], ...]
+    # output_path: 결과 이미지의 저장 경로
+
+    num_images = len(images)
+    if num_images != len(bbox_data_list):
+        raise ValueError("이미지와 bbox 데이터의 수가 일치하지 않습니다.")
+
     
-])
+    for i,bbox in enumerate(bbox_data_list):
+        print_progress(i,len(bbox_data_list))
+        img = images[i]
+        draw = ImageDraw.Draw(img)
 
-num_classes = 6  
-load_weights_dir = "../out/weights/model_num_2.pt"
+        # bbox 그리기
+        bbox_data = bbox['boxes']
+        label = bbox['labels']
+        draw_bbox(draw, bbox_data, label)
+        
 
-model_loader = Load_Model(num_classes,load_weights_dir)
+        img.save(f'../out/test/{i}.jpg')
+    # result_image.show()
 
-model = model_loader.load()
+def draw_bbox(draw, bbox_data, label):
+    # bbox를 이미지에 그리는 함수
+    label_map = ['white_dotted', 'white_solid', 'yellow_dotted', "yellow_solid", "blue_dotted", "blue_solid"]
+    font = ImageFont.truetype("arial.ttf", 28)
+    for bbox,labelnum in zip(bbox_data, label):
+        xmin, ymin, xmax, ymax = bbox
+        draw.rectangle([(xmin, ymin), (xmax, ymax )],
+                       outline="green", width=3)
+        draw.text((xmin,ymin), f"{label_map[labelnum]}", (255,0,0),font) # x=0, y=10, (0,0,0) : 검은색(RGB값)
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+json_folder_path = '../data/labels'
+image_folder_path = '../data/images'     
+image_paths = glob.glob(f"{image_folder_path}/*.jpg") + glob.glob(f"{image_folder_path}/*.png")
 
-# model.to(device)
 
-with torch.no_grad():
-    img = Image.open("../data/test/2215112.jpg").convert("RGB")
-    img = transform(img)
-    img_unsqeeze = img.unsqueeze_(0)
 
-    
-    pred = make_prediction(model, img_unsqeeze, 0.2)
-    print(pred)
+y_train, except_data = parse_json_files(json_folder_path)  # bbox와 category 데이터 그리고 제외된 데이터
+x_train = []
+for image_path in image_paths:
+    if os.path.basename(image_path) not in except_data:
+        image = Image.open(image_path).convert("RGB")
+        x_train.append(image)
 
-    fig, ax = plt.subplots(1, figsize=(12, 9))
-    ax.imshow(img.numpy().transpose((1, 2, 0)))
+print(f"y_len: {len(y_train)}")
+print(f"x_len: {len(x_train)}")
 
-    for box, label, score in zip(prediction[0]['boxes'], prediction[0]['labels'], prediction[0]['scores']):
-        box = [round(coord.item(), 2) for coord in box.tolist()]
-        label = label.item()
-        score = round(score.item(), 3)
-
-        # 박스 시각화
-        rect = patches.Rectangle((box[0], box[1]), box[2] - box[0], box[3] - box[1], linewidth=2, edgecolor='r',
-                                facecolor='none', label=f'{classes[label]}: {score}')
-        ax.add_patch(rect)
-
-        # 레이블과 점수 표시
-        plt.text(box[0], box[1] - 5, f'{classes[label]}: {score}', color='r')
-
-    # pred_scores = pred[0]['scores'].tolist()
-    # pred_labels = pred[0]['labels'].tolist()
-
-    # print(pred_scores)
-    # print(pred_labels)
-    
-    # print(pred_labels.index(max(pred_scores)))
+visualize_images_with_bbox(x_train, y_train)

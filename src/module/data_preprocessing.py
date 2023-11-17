@@ -3,10 +3,31 @@ import os
 from module.progress_bar import print_progress
 
 def parse_json_files(json_folder):
+            
+    #bbox의 최소크기 제한(너무 작은것도 잡혀버림)
+    w_thres = 50
+    h_thres = 50
+
+    def calculate_bbox_size(bbox):
+        # 바운딩 박스의 크기 계산
+        width = bbox[2] - bbox[0]
+        height = bbox[3] - bbox[1]
+        return width,height
+
+
+    def detect_small_bbox(bbox, width_thres, height_thres):
+        # threshold보다 작은 크기의 바운딩 박스 감지
+        w, h = calculate_bbox_size(bbox)
+        if w < width_thres or h < height_thres:
+            return True
+        else:
+            return False
+        
+
     labels_data = []
     excepted_data = []
 
-    def convert_to_bbox(data, origin_wid, origin_hei):
+    def convert_to_bbox(data, origin_wid, origin_hei, w_thres, h_thres):
         if not data or not isinstance(data, list):
             return None
 
@@ -21,10 +42,13 @@ def parse_json_files(json_folder):
         x_max = max(x_values)
         y_max = max(y_values)
 
-        if x_max > 1920 or y_max > 1200 or x_min < 0 or y_min < 0:
+        if x_max > 1920 or y_max > 1200 or x_min < 0 or y_min < 0: #간혹 최대 해상도를 넘는게 있음
             return None
 
-        if x_max == x_min or y_max == y_min:
+        if x_max == x_min or y_max == y_min: #간혹 좌표가 겹치는 경우가 있음
+            return None
+
+        if detect_small_bbox(bbox, w_thres, h_thres):
             return None
 
         x_min = x_min / origin_wid
@@ -67,7 +91,7 @@ def parse_json_files(json_folder):
                     point_data = [[point['x'], point['y']] for point in box_data]
                     origin_wid = data['image']['image_size'][1]
                     origin_hei = data['image']['image_size'][0]
-                    convert = convert_to_bbox(point_data, origin_wid, origin_hei)
+                    convert = convert_to_bbox(point_data, origin_wid, origin_hei, w_thres, h_thres)
                     if convert == None:
                         continue
                     else:
